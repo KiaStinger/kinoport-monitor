@@ -1,0 +1,44 @@
+name: Kinoport Monitor
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # каждый час в 00 минут
+  workflow_dispatch:       # ручной запуск из GitHub UI
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # нужно чтобы коммитить state.json
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          KINOPOISK_COOKIES: ${{ secrets.KINOPOISK_COOKIES }}
+        run: python monitor.py
+
+      - name: Save updated state to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "chore: update state [skip ci]"
+          git push
