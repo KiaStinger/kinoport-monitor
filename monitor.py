@@ -10,10 +10,10 @@ import json
 import os
 import requests
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-KINOPOISK_COOKIES = json.loads(os.environ.get("KINOPOISK_COOKIES", "[]"))
 
 URL = "https://www.kinopoisk.ru/special/kinoport/"
 STATE_FILE = "state.json"
@@ -47,22 +47,18 @@ async def fetch_sessions() -> list[dict]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
-
-        if KINOPOISK_COOKIES:
-            await context.add_cookies(KINOPOISK_COOKIES)
-
         page = await context.new_page()
-        await page.goto(URL, wait_until="networkidle", timeout=30000)
+        await Stealth().apply_stealth_async(page)
+        await page.goto(URL, wait_until="load", timeout=45000)
+        await page.wait_for_timeout(3000)
 
-        # Извлекаем данные о сеансах из страницы
         sessions = await page.evaluate("""
             () => {
                 const results = [];
                 const seen = new Set();
 
-                // Ищем карточки с фильмами и сеансами по разным паттернам
                 const selectors = [
                     '[class*="session"]',
                     '[class*="seance"]',
@@ -90,7 +86,6 @@ async def fetch_sessions() -> list[dict]:
                     });
                 }
 
-                // Если ничего не нашли — берём весь основной контент страницы
                 if (results.length === 0) {
                     const main = document.querySelector('main') || document.body;
                     results.push({
